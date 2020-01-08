@@ -1,0 +1,9 @@
+Makefile
+build/
+common/
+configure
+defs.mk
+design/
+man/
+mk/
+user/
