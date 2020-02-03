@@ -34,9 +34,15 @@ struct intersection
   volatile Direction t2_des;
 };
 
-struct intersection* t_intersection;
-struct lock* intersection_lk;
-struct cv* vehicle_allowed;
+static struct intersection* t_intersection;
+static struct lock* intersection_lk;
+static struct cv* n_veh_allowed;
+static struct cv* s_veh_allowed;
+static struct cv* e_veh_allowed;
+static struct cv* w_veh_allowed;
+
+static int dir_por[4] = {0,0,0,0};
+static int dir_wait[4] = {0,0,0,0};
 
 static bool
 right_turn(Direction ori, Direction des)
@@ -88,6 +94,35 @@ trail_allow(struct intersection* cur_int, Direction ori, Direction des)
   return false;
 }
 
+// static int
+// next_dir(int dp[], int dw[])
+// {
+//   int max = 0;
+//   int pos = 0;
+//   for(int i = 0; i < 4; i++)
+//   {
+//     if(dp[i] > max && dw[i] > 0)
+//     {
+//       max = dp[i];
+//       pos = i;
+//     }
+//   }
+
+//   for(int i = 0; i < 4; i++)
+//   {
+//     if(i == pos)
+//     {
+//       dp[i] = 0;
+//       dw[i]--;
+//     }
+//     else
+//     {
+//       dp[i]++;
+//     }
+//   }
+//   return pos;
+// }
+
 
 /* 
  * The simulation driver will call this function once before starting
@@ -106,7 +141,10 @@ intersection_sync_init(void)
   t_intersection->t2_taken = false;
 
   intersection_lk = lock_create("intersectionLock");
-  vehicle_allowed = cv_create("intersectionCV");
+  n_veh_allowed = cv_create("NorthVehicleCV");
+  s_veh_allowed = cv_create("SouthVehicleCV");
+  e_veh_allowed = cv_create("EastVehicleCV");
+  w_veh_allowed = cv_create("WestVehicleCV");
 
   if (intersection_lk == NULL) {
     panic("could not create locks");
@@ -128,7 +166,10 @@ intersection_sync_cleanup(void)
   /* replace this default implementation with your own implementation */
   KASSERT(intersection_lk != NULL);
   lock_destroy(intersection_lk);
-  cv_destroy(vehicle_allowed);
+  cv_destroy(n_veh_allowed);
+  cv_destroy(s_veh_allowed);
+  cv_destroy(e_veh_allowed);
+  cv_destroy(w_veh_allowed);
   kfree(t_intersection);
 }
 
@@ -152,11 +193,31 @@ intersection_before_entry(Direction origin, Direction destination)
   /* replace this default implementation with your own implementation */
   KASSERT(intersection_lk != NULL);
   lock_acquire(intersection_lk);
+  dir_wait[(int)origin]++;
   while(!trail_allow(t_intersection, origin, destination))
   {
-    cv_wait(vehicle_allowed, intersection_lk);
+    int ori_num = (int)origin;
+    KASSERT(ori_num == 0 || ori_num == 1|| ori_num == 2 || ori_num == 3);
+    if(ori_num == 0)
+    {
+      cv_wait(n_veh_allowed, intersection_lk);   
+    }
+    else if (ori_num == 1)
+    {
+      cv_wait(e_veh_allowed, intersection_lk);   
+    }
+    else if (ori_num == 2)
+    {
+      cv_wait(s_veh_allowed, intersection_lk);   
+    }
+    else
+    {
+      cv_wait(w_veh_allowed, intersection_lk);
+    }
   }
-
+  
+  dir_wait[(int)origin]--;
+  dir_por[(int)origin] = 0;
   if(!t_intersection->t1_taken)
   {
     t_intersection->t1_taken = true;
@@ -203,6 +264,41 @@ intersection_after_exit(Direction origin, Direction destination)
   {
      t_intersection->t2_taken = false;
   }
+
+  int max = -1;
+  int pos = -1;
+  for(int i = 0; i < 4; i++)
+  {
+    if(dir_por[i] > max && dir_wait[i] > 0)
+    {
+      //KASSERT(false);
+      max = dir_por[i];
+      pos = i;
+    }
+  }
+  for (int i = 0; i < 4; i++)
+  {
+    if (i != pos && dir_wait[i] > 0)
+    {
+      dir_por[i]++;
+    }
+  }
+
   lock_release(intersection_lk);
-  cv_signal(vehicle_allowed, intersection_lk);
+  if (pos == 0)
+  {
+    cv_signal(n_veh_allowed, intersection_lk);
+  }
+  else if (pos == 1)
+  {
+    cv_signal(e_veh_allowed, intersection_lk);
+  }
+  else if (pos == 2)
+  {
+    cv_signal(s_veh_allowed, intersection_lk);
+  }
+  else if (pos == 3)
+  {
+    cv_signal(w_veh_allowed, intersection_lk);
+  }
 }
