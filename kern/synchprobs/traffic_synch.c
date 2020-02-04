@@ -193,11 +193,10 @@ intersection_before_entry(Direction origin, Direction destination)
   /* replace this default implementation with your own implementation */
   KASSERT(intersection_lk != NULL);
   lock_acquire(intersection_lk);
-  dir_wait[(int)origin]++;
+  int ori_num = (int)origin;
+  dir_wait[ori_num]++;
   while(!trail_allow(t_intersection, origin, destination))
   {
-    int ori_num = (int)origin;
-    KASSERT(ori_num == 0 || ori_num == 1|| ori_num == 2 || ori_num == 3);
     if(ori_num == 0)
     {
       cv_wait(n_veh_allowed, intersection_lk);   
@@ -216,8 +215,16 @@ intersection_before_entry(Direction origin, Direction destination)
     }
   }
   
-  dir_wait[(int)origin]--;
-  dir_por[(int)origin] = 0;
+  dir_wait[ori_num]--;
+  dir_por[ori_num] = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    if (i != ori_num)
+    {
+      dir_por[i]+= dir_wait[i];
+    }
+  }
+  
   if(!t_intersection->t1_taken)
   {
     t_intersection->t1_taken = true;
@@ -249,10 +256,6 @@ void
 intersection_after_exit(Direction origin, Direction destination) 
 {
   /* replace this default implementation with your own implementation */
-  // (void)origin;  /* avoid compiler complaint about unused parameter */
-  // (void)destination; /* avoid compiler complaint about unused parameter */
-  // KASSERT(intersectionSem != NULL);
-  // V(intersectionSem);
 
   KASSERT(intersection_lk != NULL);
   lock_acquire(intersection_lk);
@@ -269,36 +272,28 @@ intersection_after_exit(Direction origin, Direction destination)
   int pos = -1;
   for(int i = 0; i < 4; i++)
   {
-    if(dir_por[i] > max && dir_wait[i] > 0)
+    if(dir_wait[i] > 0 && dir_por[i] > max)
     {
-      //KASSERT(false);
       max = dir_por[i];
       pos = i;
-    }
-  }
-  for (int i = 0; i < 4; i++)
-  {
-    if (i != pos && dir_wait[i] > 0)
-    {
-      dir_por[i]++;
     }
   }
 
   lock_release(intersection_lk);
   if (pos == 0)
   {
-    cv_signal(n_veh_allowed, intersection_lk);
+    cv_broadcast(n_veh_allowed, intersection_lk);
   }
   else if (pos == 1)
   {
-    cv_signal(e_veh_allowed, intersection_lk);
+    cv_broadcast(e_veh_allowed, intersection_lk);
   }
   else if (pos == 2)
   {
-    cv_signal(s_veh_allowed, intersection_lk);
+    cv_broadcast(s_veh_allowed, intersection_lk);
   }
   else if (pos == 3)
   {
-    cv_signal(w_veh_allowed, intersection_lk);
-  }
+    cv_broadcast(w_veh_allowed, intersection_lk);
+  }  
 }
