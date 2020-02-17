@@ -21,28 +21,25 @@
 /*
  * replace this with declarations of any synchronization and other variables you need here
  */
-struct intersection
-{
+
   //trail 1
-  volatile bool t1_taken;
-  volatile Direction t1_ori;
-  volatile Direction t1_des;
+volatile bool t1_taken = false;
+Direction t1_ori;
+Direction t1_des;
 
   //trail 2
-  volatile bool t2_taken;
-  volatile Direction t2_ori;
-  volatile Direction t2_des;
-};
+volatile bool t2_taken = false;
+Direction t2_ori;
+Direction t2_des;
 
-static struct intersection* t_intersection;
 static struct lock* intersection_lk;
 static struct cv* n_veh_allowed;
 static struct cv* s_veh_allowed;
 static struct cv* e_veh_allowed;
 static struct cv* w_veh_allowed;
 
-static int dir_por[4] = {0,0,0,0};
-static int dir_wait[4] = {0,0,0,0};
+static int dir_por[4];
+static int dir_wait[4];
 
 static bool
 right_turn(Direction ori, Direction des)
@@ -60,28 +57,28 @@ right_turn(Direction ori, Direction des)
 }
 
 static bool
-trail_allow(struct intersection* cur_int, Direction ori, Direction des)
+trail_allow(Direction ori, Direction des)
 {
-  if(cur_int->t1_taken && cur_int->t2_taken) 
+  if(t1_taken && t2_taken) 
   {
     return false;
   }
 
-  if(!cur_int->t1_taken && !cur_int->t2_taken)
+  if(!t1_taken && !t2_taken)
   {
     return true;
   }
 
   Direction tem_ori, tem_des;
-  if(cur_int->t1_taken)
+  if(t1_taken)
   {
-    tem_ori = cur_int->t1_ori;
-    tem_des = cur_int->t1_des;
+    tem_ori = t1_ori;
+    tem_des = t1_des;
   }
   else
   {  
-    tem_ori = cur_int->t2_ori;
-    tem_des = cur_int->t2_des;
+    tem_ori = t2_ori;
+    tem_des = t2_des;
   }
   
   if((tem_ori == ori) // entered the intersection from the same direction
@@ -94,36 +91,6 @@ trail_allow(struct intersection* cur_int, Direction ori, Direction des)
   return false;
 }
 
-// static int
-// next_dir(int dp[], int dw[])
-// {
-//   int max = 0;
-//   int pos = 0;
-//   for(int i = 0; i < 4; i++)
-//   {
-//     if(dp[i] > max && dw[i] > 0)
-//     {
-//       max = dp[i];
-//       pos = i;
-//     }
-//   }
-
-//   for(int i = 0; i < 4; i++)
-//   {
-//     if(i == pos)
-//     {
-//       dp[i] = 0;
-//       dw[i]--;
-//     }
-//     else
-//     {
-//       dp[i]++;
-//     }
-//   }
-//   return pos;
-// }
-
-
 /* 
  * The simulation driver will call this function once before starting
  * the simulation
@@ -135,11 +102,6 @@ void
 intersection_sync_init(void)
 {
   /* replace this default implementation with your own implementation */
-
-  t_intersection = kmalloc(sizeof(struct intersection));
-  t_intersection->t1_taken = false;
-  t_intersection->t2_taken = false;
-
   intersection_lk = lock_create("intersectionLock");
   n_veh_allowed = cv_create("NorthVehicleCV");
   s_veh_allowed = cv_create("SouthVehicleCV");
@@ -170,7 +132,6 @@ intersection_sync_cleanup(void)
   cv_destroy(s_veh_allowed);
   cv_destroy(e_veh_allowed);
   cv_destroy(w_veh_allowed);
-  kfree(t_intersection);
 }
 
 
@@ -191,11 +152,10 @@ void
 intersection_before_entry(Direction origin, Direction destination) 
 {
   /* replace this default implementation with your own implementation */
-  KASSERT(intersection_lk != NULL);
   lock_acquire(intersection_lk);
   int ori_num = (int)origin;
   dir_wait[ori_num]++;
-  while(!trail_allow(t_intersection, origin, destination))
+  while(!trail_allow(origin, destination))
   {
     if(ori_num == 0)
     {
@@ -219,23 +179,20 @@ intersection_before_entry(Direction origin, Direction destination)
   dir_por[ori_num] = 0;
   for (int i = 0; i < 4; i++)
   {
-    if (i != ori_num)
-    {
-      dir_por[i]+= dir_wait[i];
-    }
+      dir_por[i] += dir_wait[i];
   }
   
-  if(!t_intersection->t1_taken)
+  if(!t1_taken)
   {
-    t_intersection->t1_taken = true;
-    t_intersection->t1_ori = origin;
-    t_intersection->t1_des = destination;
+    t1_taken = true;
+    t1_ori = origin;
+    t1_des = destination;
   }
   else
   {
-    t_intersection->t2_taken = true;
-    t_intersection->t2_ori = origin;
-    t_intersection->t2_des = destination;
+    t2_taken = true;
+    t2_ori = origin;
+    t2_des = destination;
   }
   lock_release(intersection_lk);
 }
@@ -256,23 +213,21 @@ void
 intersection_after_exit(Direction origin, Direction destination) 
 {
   /* replace this default implementation with your own implementation */
-
-  KASSERT(intersection_lk != NULL);
   lock_acquire(intersection_lk);
-  if(t_intersection->t1_taken && t_intersection->t1_ori == origin && t_intersection->t1_des == destination)
+  if(t1_taken && t1_ori == origin && t1_des == destination)
   {
-    t_intersection->t1_taken = false;
+    t1_taken = false;
   }
   else
   {
-     t_intersection->t2_taken = false;
+     t2_taken = false;
   }
 
   int max = -1;
   int pos = -1;
   for(int i = 0; i < 4; i++)
   {
-    if(dir_wait[i] > 0 && dir_por[i] > max)
+    if(dir_por[i] > max && dir_wait[i] > 0)
     {
       max = dir_por[i];
       pos = i;
