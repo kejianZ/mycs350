@@ -38,12 +38,32 @@
 
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
+#include <synch.h>
+#include <types.h>
+#include "opt-A2.h"
 
 struct addrspace;
 struct vnode;
 #ifdef UW
 struct semaphore;
 #endif // UW
+
+#if OPT_A2
+volatile int global_pid;
+struct lock* pid_lock;
+struct children_proc;
+struct children_proc
+{
+	volatile pid_t child_pids[100];
+	volatile bool child_status[100];
+	volatile int exit_code[100];
+};
+
+// returns -1 if the process is not found
+int find_child(struct children_proc children, pid_t pid);
+
+int get_empty_index(struct children_proc children);
+#endif
 
 /*
  * Process structure.
@@ -69,6 +89,13 @@ struct proc {
 #endif
 
 	/* add more material here as needed */
+#if OPT_A2
+	pid_t pid;
+	struct proc* parent;
+	struct children_proc children;
+	struct lock* children_lock;	// acquired by child process when they want to modify their info in children.
+	struct cv* wait_child_cv;
+#endif /* OPT_A2 */
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */

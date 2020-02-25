@@ -59,6 +59,11 @@ runprogram(char *progname)
 	vaddr_t entrypoint, stackptr;
 	int result;
 
+#if OPT_A2
+	global_pid = 1;
+	pid_lock = lock_create("global_pid_lk");
+#endif
+
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
 	if (result) {

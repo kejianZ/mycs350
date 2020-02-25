@@ -69,7 +69,32 @@ static struct semaphore *proc_count_mutex;
 struct semaphore *no_proc_sem;   
 #endif  // UW
 
+#if OPT_A2
+int find_child(struct children_proc children, pid_t pid)
+{
+	for(int i = 0; i < 100; i++)
+	{
+		if(children.child_pids[i] == pid)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
 
+int get_empty_index(struct children_proc children)
+{
+	for(int i = 0; i < 100; i++)
+	{
+		if(children.child_pids[i]==0 || children.child_status[i])
+		{
+			return i;
+		}
+	}
+	KASSERT(false);
+	return -1;
+}
+#endif
 
 /*
  * Create a proc structure.
@@ -184,7 +209,10 @@ proc_destroy(struct proc *proc)
 	V(proc_count_mutex);
 #endif // UW
 	
-
+#if OPT_A2
+	lock_destroy(proc->children_lock);
+	cv_destroy(proc->wait_child_cv);
+#endif
 }
 
 /*
@@ -270,6 +298,16 @@ proc_create_runprogram(const char *name)
 	proc_count++;
 	V(proc_count_mutex);
 #endif // UW
+
+#if OPT_A2
+	lock_acquire(pid_lock);
+	proc->pid = global_pid;
+	global_pid++;
+	lock_release(pid_lock);
+	proc->parent = NULL;
+	proc->children_lock = lock_create("children_lk");
+	proc->wait_child_cv = cv_create("children_cv");
+#endif
 
 	return proc;
 }
