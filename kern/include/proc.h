@@ -52,12 +52,21 @@ struct semaphore;
 volatile int global_pid;
 struct lock* pid_lock;
 struct children_proc;
+
 struct children_proc
 {
-	volatile pid_t child_pids[100];
-	volatile bool child_status[100];
-	volatile int exit_code[100];
+	int length;
+	pid_t child_pids[128];
+	bool child_alive[128];
+	int child_ec[128];
+	struct lock* child_wlk[128];
+	struct cv* child_wcv[128];
+	struct proc* child_procs[128];
 };
+
+void clean_lks(struct children_proc children);
+
+void announce_children(struct children_proc children);
 
 // returns -1 if the process is not found
 int find_child(struct children_proc children, pid_t pid);
@@ -91,10 +100,12 @@ struct proc {
 	/* add more material here as needed */
 #if OPT_A2
 	pid_t pid;
+
+	bool parent_alive;
 	struct proc* parent;
+	int parent_index;
+
 	struct children_proc children;
-	struct lock* children_lock;	// acquired by child process when they want to modify their info in children.
-	struct cv* wait_child_cv;
 #endif /* OPT_A2 */
 };
 

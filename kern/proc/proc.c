@@ -70,9 +70,34 @@ struct semaphore *no_proc_sem;
 #endif  // UW
 
 #if OPT_A2
+
+void clean_lks(struct children_proc children)
+{
+	for(int i = 0; i < children.length; i++)
+	{
+		if (children.child_wlk[i] != NULL)
+		{
+			lock_destroy(children.child_wlk[i]);
+			cv_destroy(children.child_wcv[i]);
+		}
+	}
+}
+
+void announce_children(struct children_proc children)
+{
+	for(int i = 0; i < children.length; i++)
+	{
+		if (children.child_alive[i])
+		{
+			children.child_procs[i]->parent_alive = false;
+		}
+	}
+}
+
 int find_child(struct children_proc children, pid_t pid)
 {
-	for(int i = 0; i < 100; i++)
+	int length = children.length;
+	for(int i = 0; i < length; i++)
 	{
 		if(children.child_pids[i] == pid)
 		{
@@ -84,13 +109,32 @@ int find_child(struct children_proc children, pid_t pid)
 
 int get_empty_index(struct children_proc children)
 {
-	for(int i = 0; i < 100; i++)
+	int length = children.length;
+	for(int i = 0; i < length; i++)
 	{
-		if(children.child_pids[i]==0 || children.child_status[i])
+		if(children.child_pids[i] == 0)
 		{
 			return i;
 		}
 	}
+
+	//have to double the size of arrays
+	//leave it here as if we need to double size, a lock is needed while resize the arrays, uncompleted!
+	// int new_length = length * 2;
+	// children.length = new_length;
+	// pid_t new_child_pids[new_length];
+	// bool new_child_alive[new_length];
+	// int new_child_ec[new_length];
+	// struct lock* new_child_wlk[new_length];
+	// struct cv* new_child_wcv[new_length];
+	// struct proc* new_child_procs[new_length];
+
+	// for(int i = 0; i < length; i++)
+	// {
+	// 	new_child_pids[i] = children.child_pids[i];
+	// 	new_child_alive[i] = children.child_pids[i];
+	// 	new_child_ec[i] = children.child_pids[i];
+	// }
 	KASSERT(false);
 	return -1;
 }
@@ -208,11 +252,6 @@ proc_destroy(struct proc *proc)
 	}
 	V(proc_count_mutex);
 #endif // UW
-	
-#if OPT_A2
-	lock_destroy(proc->children_lock);
-	cv_destroy(proc->wait_child_cv);
-#endif
 }
 
 /*
@@ -300,13 +339,16 @@ proc_create_runprogram(const char *name)
 #endif // UW
 
 #if OPT_A2
+	if(pid_lock == NULL)
+	{
+		pid_lock = lock_create("global pid lock");
+	}
 	lock_acquire(pid_lock);
 	proc->pid = global_pid;
 	global_pid++;
 	lock_release(pid_lock);
+	proc->children.length = 128;
 	proc->parent = NULL;
-	proc->children_lock = lock_create("children_lk");
-	proc->wait_child_cv = cv_create("children_cv");
 #endif
 
 	return proc;

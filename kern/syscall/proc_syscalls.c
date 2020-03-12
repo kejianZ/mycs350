@@ -22,18 +22,20 @@ void sys__exit(int exitcode) {
   struct proc *p = curproc;
 
 #if OPT_A2
-  if(curproc->parent != NULL)
+  if(p -> parent_alive)
   {
     struct proc *parent = p->parent;
-    lock_acquire(parent->children_lock);
-    int child_pos = find_child(parent->children, p->pid);
-    KASSERT(child_pos != -1); // means curproc is not found which shouldn't happen
-    parent->children.child_status[child_pos] = true;
-    parent->children.exit_code[child_pos] = exitcode;
-    lock_release(parent->children_lock);
-    cv_broadcast(parent->wait_child_cv, parent->children_lock);
+    int index = p -> parent_index;
+    parent->children.child_alive[index] = false;
+    parent->children.child_ec[index] = exitcode;
+    if (parent->children.child_wlk[index] != NULL)
+    {
+      cv_signal(parent->children.child_wcv[index], parent->children.child_wlk[index]);
+    }
   }
-    
+
+  clean_lks(p->children);
+  announce_children(p->children);
 #else
     /* for now, just include this to keep the compiler from complaining about
 	 an unused variable */
@@ -108,20 +110,27 @@ sys_waitpid(pid_t pid,
   }
 
 #if OPT_A2
-  lock_acquire(curproc->children_lock);
   int index = find_child(curproc->children, pid);
   if(index == -1)
   {
-    lock_release(curproc->children_lock);
     *retval = -1;
     return ESRCH;
   }
-  while(!curproc->children.child_status[index])
+
+  if (curproc->children.child_alive[index])
   {
-    cv_wait(curproc->wait_child_cv, curproc->children_lock);
+    curproc->children.child_wlk[index] = lock_create("child waiting lock");
+    curproc->children.child_wcv[index] = cv_create("child waiting cv");
+    lock_acquire(curproc->children.child_wlk[index]);
+    while(curproc->children.child_alive[index])
+    {
+      cv_wait(curproc->children.child_wcv[index], curproc->children.child_wlk[index]);
+    }
+    lock_release(curproc->children.child_wlk[index]);
   }
-  exitstatus = _MKWAIT_EXIT(curproc->children.exit_code[index]);
-  lock_release(curproc->children_lock);
+
+  // if child is died before, exit code is already set in the array
+  exitstatus = _MKWAIT_EXIT(curproc->children.child_ec[index]);
 
 #else
     /* for now, just pretend the exitstatus is 0 */
@@ -142,7 +151,7 @@ enter_child_process(void *tf, unsigned long as)
 {
   //copy trapfram
   struct trapframe *new_tf = kmalloc(sizeof(struct trapframe));
-  memcpy(tf,new_tf,sizeof(struct trapframe));
+  memcpy(new_tf, tf, sizeof(struct trapframe));
 
   //set return values
   new_tf->tf_v0 = 0;  //return value for fork in child
@@ -175,9 +184,13 @@ sys_fork(struct trapframe *tf, pid_t *retval)
 
   //set child-parent relationship
   child->parent = curproc;
+  child->parent_alive = true;
   int new_ind = get_empty_index(curproc->children);
+  child->parent_index = new_ind;
   curproc->children.child_pids[new_ind] = child->pid;
-  curproc->children.child_status[new_ind] = false;
+  curproc->children.child_alive[new_ind] = true;
+  curproc->children.child_procs[new_ind] = child;
+  
   
   *retval = child->pid;
   return 0;
