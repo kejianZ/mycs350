@@ -152,16 +152,18 @@ enter_child_process(void *tf, unsigned long as)
   //copy trapfram
   struct trapframe *new_tf;
   new_tf = (struct trapframe*) tf;
+  struct trapframe cp_tf = *new_tf;
+  kfree(tf);
 
   //set return values
-  new_tf->tf_v0 = 0;  //return value for fork in child
-  new_tf->tf_a3 = 0;
+  cp_tf.tf_v0 = 0;  //return value for fork in child
+  cp_tf.tf_a3 = 0;
 
   //pc+=4
-  new_tf->tf_epc += 4;
+  cp_tf.tf_epc += 4;
 
   (void)as;
-  mips_usermode(new_tf);
+  mips_usermode(&cp_tf);
 }
 
 int

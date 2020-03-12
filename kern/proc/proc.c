@@ -342,10 +342,11 @@ proc_create_runprogram(const char *name)
 	if(pid_lock == NULL)
 	{
 		pid_lock = lock_create("global pid lock");
+		//global_pid = 1;
 	}
 	lock_acquire(pid_lock);
-	proc->pid = global_pid;
 	global_pid++;
+	proc->pid = global_pid;
 	lock_release(pid_lock);
 	proc->children.length = 128;
 	proc->parent = NULL;
