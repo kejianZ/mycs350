@@ -150,8 +150,8 @@ void
 enter_child_process(void *tf, unsigned long as)
 {
   //copy trapfram
-  struct trapframe *new_tf = kmalloc(sizeof(struct trapframe));
-  memcpy(new_tf, tf, sizeof(struct trapframe));
+  struct trapframe *new_tf;
+  new_tf = (struct trapframe*) tf;
 
   //set return values
   new_tf->tf_v0 = 0;  //return value for fork in child
@@ -180,7 +180,9 @@ sys_fork(struct trapframe *tf, pid_t *retval)
   }
 
   //create new thread
-  thread_fork("child_thread", child, enter_child_process, tf, 1);
+  struct trapframe *new_tf = kmalloc(sizeof(struct trapframe));
+  memcpy(new_tf, tf, sizeof(struct trapframe));
+  thread_fork("child_thread", child, enter_child_process, new_tf, 1);
 
   //set child-parent relationship
   child->parent = curproc;
