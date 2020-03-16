@@ -11,6 +11,8 @@
 #include <addrspace.h>
 #include <copyinout.h>
 #include "opt-A2.h"
+#include <vfs.h>
+#include <kern/fcntl.h>
 #include <mips/trapframe.h>
 
   /* this implementation of sys__exit does not do anything with the exit code */
@@ -198,5 +200,131 @@ sys_fork(struct trapframe *tf, pid_t *retval)
   
   *retval = child->pid;
   return 0;
+}
+#endif
+
+#if OPT_A2
+// A2b
+int sys_execv(const char *program, char **args)
+{
+  		kprintf("we are here");
+  // count argv # and copy them into kernel
+  int argc = 0;
+  for(int i = 0; args[i] != NULL; i++)
+  {
+    argc++;
+  }
+
+  kprintf("myargc: %d", argc);
+
+  // malloc for argv array
+  char** hp_argv = kmalloc((argc + 1) * sizeof(char *));
+  KASSERT(hp_argv != NULL);
+
+  int* arg_lens = kmalloc((argc) * sizeof(int));
+  // copy args into argv
+  for(int i = 0; i < argc; i++)
+  {
+    size_t arglen = (strlen(args[i]) + 1) * sizeof(char);
+    arg_lens[i] = arglen;
+    hp_argv[i] = kmalloc(arglen);
+    KASSERT(hp_argv[i] != NULL);
+    int copy_r = copyin((const_userptr_t)args[i], (void *)hp_argv[i], arglen);
+    KASSERT(copy_r == 0);
+  }
+  hp_argv[argc] = NULL;
+
+  // copy prog path into kernel
+  size_t pathlen = (strlen(program) + 1) * sizeof(char);
+  char* hp_path = kmalloc(pathlen);
+  KASSERT(hp_path != NULL);
+  copyin((const_userptr_t)program, (void *)hp_path, pathlen);
+
+  struct addrspace* old_as = curproc_getas();
+
+  ///////////////////////////////////////////////////////////////////////////////////
+  // copy from runprogram
+  struct addrspace *as;
+	struct vnode *v;
+  vaddr_t entrypoint, stackptr;
+  int result;
+  /* Open the file. */
+	result = vfs_open(hp_path, O_RDONLY, 0, &v);
+	if (result) {
+		return result;
+	}
+
+  /* Create a new address space. */
+	as = as_create();
+	if (as ==NULL) {
+		vfs_close(v);
+		return ENOMEM;
+	}
+
+  /* Switch to it and activate it. */
+	curproc_setas(as);
+	as_activate();
+
+	/* Load the executable. */
+	result = load_elf(v, &entrypoint);
+	if (result) {
+		/* p_addrspace will go away when curproc is destroyed */
+		vfs_close(v);
+		return result;
+	}
+
+	/* Done with the file now. */
+	vfs_close(v);
+
+  /* Define the user stack in the address space */
+	result = as_define_stack(as, &stackptr);
+	if (result) {
+		/* p_addrspace will go away when curproc is destroyed */
+		return result;
+	}
+  ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  vaddr_t temp_ptr = stackptr;
+  vaddr_t* arg_addr = kmalloc((argc + 1) * sizeof(vaddr_t));  //address of arguements in stack
+
+  arg_addr[argc] = (vaddr_t) NULL;
+  for(int i = argc - 1; i >= 0 ; i--)
+  {
+    size_t arglen = arg_lens[i];
+    temp_ptr -= arglen;
+    arg_addr[i] = temp_ptr;
+    int copy_r = copyout((void *)hp_argv[i], (userptr_t)temp_ptr, arglen);
+    KASSERT(copy_r == 0);
+  }
+
+  temp_ptr = stackptr - ROUNDUP(stackptr-temp_ptr, 4);
+  for(int i = argc; i >= 0; i--)
+  {
+    temp_ptr -= 4;
+    int copy_r = copyout((void *)arg_addr[i], (userptr_t)temp_ptr, 4);
+    KASSERT(copy_r == 0);
+  }
+
+  // delete old address space
+  as_destroy(old_as);
+
+  // delete arg related arrays on heap
+  kfree(arg_addr);
+  for(int i = 0; i < argc; i++)
+  {
+    kfree(hp_argv[i]);
+  }
+  kfree(hp_argv);
+  kfree(arg_lens);
+  kfree(arg_addr);
+  kfree(hp_path);
+
+  // enter the new process
+  enter_new_process(argc, (userptr_t)temp_ptr,
+			  temp_ptr - 8, entrypoint);
+	
+	/* enter_new_process does not return. */
+	panic("enter_new_process returned\n");
+	return EINVAL;
 }
 #endif

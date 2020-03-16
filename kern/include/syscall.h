@@ -54,6 +54,7 @@ void enter_new_process(int argc, userptr_t argv, vaddr_t stackptr,
 #if OPT_A2
 void enter_child_process(void *tf, unsigned long as);
 int sys_fork(struct trapframe *tf, pid_t *retval);
+int sys_execv(const char *program, char **args);
 #endif
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.
