@@ -71,7 +71,7 @@ struct semaphore *no_proc_sem;
 
 #if OPT_A2
 
-void clean_lks(struct children_proc children)
+void clean_children_info(struct children_proc children)
 {
 	for(int i = 0; i < children.length; i++)
 	{
@@ -81,6 +81,12 @@ void clean_lks(struct children_proc children)
 			cv_destroy(children.child_wcv[i]);
 		}
 	}
+	kfree(children.child_pids);
+	kfree(children.child_alive);
+	kfree(children.child_ec);
+	kfree(children.child_wlk);
+	kfree(children.child_wcv);
+	kfree(children.child_procs);
 }
 
 void announce_children(struct children_proc children)
@@ -348,7 +354,14 @@ proc_create_runprogram(const char *name)
 	global_pid++;
 	proc->pid = global_pid;
 	lock_release(pid_lock);
-	proc->children.length = 64;
+	const int deflen = 64;
+	proc->children.length = deflen;
+	proc->children.child_pids = kmalloc(deflen * sizeof(pid_t));
+	proc->children.child_alive = kmalloc(deflen * sizeof(bool));
+	proc->children.child_ec = kmalloc(deflen * sizeof(int));
+	proc->children.child_wlk = kmalloc(deflen * sizeof(struct lock *));
+	proc->children.child_wcv = kmalloc(deflen * sizeof(struct cv *));
+	proc->children.child_procs = kmalloc(deflen * sizeof(struct proc *));
 	proc->parent = NULL;
 #endif
 

@@ -35,9 +35,9 @@ void sys__exit(int exitcode) {
       cv_signal(parent->children.child_wcv[index], parent->children.child_wlk[index]);
     }
   }
-
-  clean_lks(p->children);
+ 
   announce_children(p->children);
+  clean_children_info(p->children);
 #else
     /* for now, just include this to keep the compiler from complaining about
 	 an unused variable */
