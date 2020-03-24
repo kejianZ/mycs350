@@ -222,6 +222,7 @@ lock_release(struct lock *lock)
 
         spinlock_acquire(&lock->lk_lock);
         lock->lk_acquired = false;
+        lock->owner = NULL;
         KASSERT(!lock->lk_acquired);
         wchan_wakeone(lock->lk_wchan);
 

@@ -92,9 +92,9 @@ vfs_open(char *path, int openflags, mode_t mode, struct vnode **ret)
 		VOP_DECREF(vn);
 		return result;
 	}
-
-	VOP_INCOPEN(vn);
 	
+	VOP_INCOPEN(vn);
+	//
 	if (openflags & O_TRUNC) {
 		if (canwrite==0) {
 			result = EINVAL;

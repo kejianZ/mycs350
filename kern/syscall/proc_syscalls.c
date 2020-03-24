@@ -207,15 +207,12 @@ sys_fork(struct trapframe *tf, pid_t *retval)
 // A2b
 int sys_execv(const char *program, char **args)
 {
-  		kprintf("we are here");
   // count argv # and copy them into kernel
   int argc = 0;
   for(int i = 0; args[i] != NULL; i++)
   {
     argc++;
   }
-
-  kprintf("myargc: %d", argc);
 
   // malloc for argv array
   char** hp_argv = kmalloc((argc + 1) * sizeof(char *));
@@ -240,8 +237,7 @@ int sys_execv(const char *program, char **args)
   KASSERT(hp_path != NULL);
   copyin((const_userptr_t)program, (void *)hp_path, pathlen);
 
-  struct addrspace* old_as = curproc_getas();
-
+  
   ///////////////////////////////////////////////////////////////////////////////////
   // copy from runprogram
   struct addrspace *as;
@@ -262,7 +258,7 @@ int sys_execv(const char *program, char **args)
 	}
 
   /* Switch to it and activate it. */
-	curproc_setas(as);
+  struct addrspace* old_as = curproc_setas(as);
 	as_activate();
 
 	/* Load the executable. */
@@ -301,7 +297,7 @@ int sys_execv(const char *program, char **args)
   for(int i = argc; i >= 0; i--)
   {
     temp_ptr -= 4;
-    int copy_r = copyout((void *)arg_addr[i], (userptr_t)temp_ptr, 4);
+    int copy_r = copyout((void *)&arg_addr[i], (userptr_t)temp_ptr, 4);
     KASSERT(copy_r == 0);
   }
 
@@ -316,12 +312,11 @@ int sys_execv(const char *program, char **args)
   }
   kfree(hp_argv);
   kfree(arg_lens);
-  kfree(arg_addr);
   kfree(hp_path);
 
   // enter the new process
   enter_new_process(argc, (userptr_t)temp_ptr,
-			  temp_ptr - 8, entrypoint);
+			  stackptr - ROUNDUP(stackptr - temp_ptr, 8), entrypoint);
 	
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");

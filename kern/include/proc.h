@@ -56,12 +56,12 @@ struct children_proc;
 struct children_proc
 {
 	int length;
-	pid_t child_pids[128];
-	bool child_alive[128];
-	int child_ec[128];
-	struct lock* child_wlk[128];
-	struct cv* child_wcv[128];
-	struct proc* child_procs[128];
+	pid_t child_pids[64];
+	bool child_alive[64];
+	int child_ec[64];
+	struct lock* child_wlk[64];
+	struct cv* child_wcv[64];
+	struct proc* child_procs[64];
 };
 
 void clean_lks(struct children_proc children);

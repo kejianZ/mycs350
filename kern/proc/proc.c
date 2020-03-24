@@ -348,7 +348,7 @@ proc_create_runprogram(const char *name)
 	global_pid++;
 	proc->pid = global_pid;
 	lock_release(pid_lock);
-	proc->children.length = 128;
+	proc->children.length = 64;
 	proc->parent = NULL;
 #endif
 
