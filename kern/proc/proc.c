@@ -354,7 +354,7 @@ proc_create_runprogram(const char *name)
 	global_pid++;
 	proc->pid = global_pid;
 	lock_release(pid_lock);
-	const int deflen = 64;
+	const int deflen = 128;
 	proc->children.length = deflen;
 	proc->children.child_pids = kmalloc(deflen * sizeof(pid_t));
 	proc->children.child_alive = kmalloc(deflen * sizeof(bool));
@@ -362,6 +362,12 @@ proc_create_runprogram(const char *name)
 	proc->children.child_wlk = kmalloc(deflen * sizeof(struct lock *));
 	proc->children.child_wcv = kmalloc(deflen * sizeof(struct cv *));
 	proc->children.child_procs = kmalloc(deflen * sizeof(struct proc *));
+	for(int i = 0; i < deflen; i++)
+	{
+		proc->children.child_alive[i] = false;
+		proc->children.child_wlk[i] = NULL;
+		proc->children.child_pids[i] = 0;
+	}
 	proc->parent = NULL;
 #endif
 
