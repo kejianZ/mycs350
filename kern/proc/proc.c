@@ -69,7 +69,85 @@ static struct semaphore *proc_count_mutex;
 struct semaphore *no_proc_sem;   
 #endif  // UW
 
+#if OPT_A2
 
+void clean_children_info(struct children_proc children)
+{
+	for(int i = 0; i < children.length; i++)
+	{
+		if (children.child_wlk[i] != NULL)
+		{
+			lock_destroy(children.child_wlk[i]);
+			cv_destroy(children.child_wcv[i]);
+		}
+	}
+	kfree(children.child_pids);
+	kfree(children.child_alive);
+#if OPT_A3
+	kfree(children.child_fatal);
+#endif
+	kfree(children.child_ec);
+	kfree(children.child_wlk);
+	kfree(children.child_wcv);
+	kfree(children.child_procs);
+}
+
+void announce_children(struct children_proc children)
+{
+	for(int i = 0; i < children.length; i++)
+	{
+		if (children.child_alive[i])
+		{
+			children.child_procs[i]->parent_alive = false;
+		}
+	}
+}
+
+int find_child(struct children_proc children, pid_t pid)
+{
+	int length = children.length;
+	for(int i = 0; i < length; i++)
+	{
+		if(children.child_pids[i] == pid)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+int get_empty_index(struct children_proc children)
+{
+	int length = children.length;
+	for(int i = 0; i < length; i++)
+	{
+		if(children.child_pids[i] == 0)
+		{
+			return i;
+		}
+	}
+
+	//have to double the size of arrays
+	//leave it here as if we need to double size, a lock is needed while resize the arrays, uncompleted!
+	// int new_length = length * 2;
+	// children.length = new_length;
+	// pid_t new_child_pids[new_length];
+	// bool new_child_alive[new_length];
+	// int new_child_ec[new_length];
+	// struct lock* new_child_wlk[new_length];
+	// struct cv* new_child_wcv[new_length];
+	// struct proc* new_child_procs[new_length];
+
+	// for(int i = 0; i < length; i++)
+	// {
+	// 	new_child_pids[i] = children.child_pids[i];
+	// 	new_child_alive[i] = children.child_pids[i];
+	// 	new_child_ec[i] = children.child_pids[i];
+	// }
+	KASSERT(false);
+	return -1;
+}
+#endif
 
 /*
  * Create a proc structure.
@@ -183,8 +261,6 @@ proc_destroy(struct proc *proc)
 	}
 	V(proc_count_mutex);
 #endif // UW
-	
-
 }
 
 /*
@@ -270,6 +346,39 @@ proc_create_runprogram(const char *name)
 	proc_count++;
 	V(proc_count_mutex);
 #endif // UW
+
+#if OPT_A2
+	if(pid_lock == NULL)
+	{
+		pid_lock = lock_create("global pid lock");
+		//global_pid = 1;
+	}
+	lock_acquire(pid_lock);
+	global_pid++;
+	proc->pid = global_pid;
+	lock_release(pid_lock);
+	const int deflen = 128;
+	proc->children.length = deflen;
+	proc->children.child_pids = kmalloc(deflen * sizeof(pid_t));
+	proc->children.child_alive = kmalloc(deflen * sizeof(bool));
+#if OPT_A3
+	proc->children.child_fatal = kmalloc(deflen * sizeof(bool));
+#endif
+	proc->children.child_ec = kmalloc(deflen * sizeof(int));
+	proc->children.child_wlk = kmalloc(deflen * sizeof(struct lock *));
+	proc->children.child_wcv = kmalloc(deflen * sizeof(struct cv *));
+	proc->children.child_procs = kmalloc(deflen * sizeof(struct proc *));
+	for(int i = 0; i < deflen; i++)
+	{
+		proc->children.child_alive[i] = false;
+#if OPT_A3
+		proc->children.child_fatal = false;
+#endif
+		proc->children.child_wlk[i] = NULL;
+		proc->children.child_pids[i] = 0;
+	}
+	proc->parent = NULL;
+#endif
 
 	return proc;
 }

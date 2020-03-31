@@ -39,6 +39,11 @@
 #include <vm.h>
 #include <mainbus.h>
 #include <syscall.h>
+#include "opt-A3.h"
+
+#if OPT_A3
+#include <proc.h>
+#endif
 
 
 /* in exception.S */
@@ -86,6 +91,11 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 		sig = SIGABRT;
 		break;
 	    case EX_MOD:
+#if OPT_A3
+		tsys_kill(0);
+		sig = SIGKILL;
+		break;
+#endif
 	    case EX_TLBL:
 	    case EX_TLBS:
 		sig = SIGSEGV;
@@ -229,12 +239,28 @@ mips_trap(struct trapframe *tf)
 	 * Call vm_fault on the TLB exceptions.
 	 * Panic on the bus error exceptions.
 	 */
+#if OPT_A3
+	int tlbexcode;
+#endif
 	switch (code) {
 	case EX_MOD:
+#if OPT_A3	
+		tlbexcode = vm_fault(VM_FAULT_READONLY, tf->tf_vaddr);
+		if(tlbexcode == 0)
+		{
+			goto done;
+		}
+		else if (tlbexcode == 9)
+		{
+			kill_curthread(tf->tf_epc, code, tf->tf_vaddr);
+		}
+		break;
+#else
 		if (vm_fault(VM_FAULT_READONLY, tf->tf_vaddr)==0) {
 			goto done;
 		}
 		break;
+#endif
 	case EX_TLBL:
 		if (vm_fault(VM_FAULT_READ, tf->tf_vaddr)==0) {
 			goto done;

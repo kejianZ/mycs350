@@ -21,8 +21,75 @@
 /*
  * replace this with declarations of any synchronization and other variables you need here
  */
-static struct semaphore *intersectionSem;
 
+  //trail 1
+volatile bool t1_taken = false;
+Direction t1_ori;
+Direction t1_des;
+
+  //trail 2
+volatile bool t2_taken = false;
+Direction t2_ori;
+Direction t2_des;
+
+static struct lock* intersection_lk;
+static struct cv* n_veh_allowed;
+static struct cv* s_veh_allowed;
+static struct cv* e_veh_allowed;
+static struct cv* w_veh_allowed;
+
+static int dir_por[4];
+static int dir_wait[4];
+
+static bool
+right_turn(Direction ori, Direction des)
+{
+  if ((int)ori == 0 && (int)des == 3)
+  {
+    return true;
+  }
+  else if ((int)ori == (int)des + 1)
+  {
+    return true;
+  }
+
+  return false;
+}
+
+static bool
+trail_allow(Direction ori, Direction des)
+{
+  if(t1_taken && t2_taken) 
+  {
+    return false;
+  }
+
+  if(!t1_taken && !t2_taken)
+  {
+    return true;
+  }
+
+  Direction tem_ori, tem_des;
+  if(t1_taken)
+  {
+    tem_ori = t1_ori;
+    tem_des = t1_des;
+  }
+  else
+  {  
+    tem_ori = t2_ori;
+    tem_des = t2_des;
+  }
+  
+  if((tem_ori == ori) // entered the intersection from the same direction
+    ||(tem_ori == des && tem_des == ori)  // going in opposite directions
+    ||((right_turn(tem_ori, tem_des) || right_turn(ori, des)) && tem_des != des)) // one vehicle is right turn and they have different des
+  {
+    return true;
+  }
+  
+  return false;
+}
 
 /* 
  * The simulation driver will call this function once before starting
@@ -35,11 +102,16 @@ void
 intersection_sync_init(void)
 {
   /* replace this default implementation with your own implementation */
+  intersection_lk = lock_create("intersectionLock");
+  n_veh_allowed = cv_create("NorthVehicleCV");
+  s_veh_allowed = cv_create("SouthVehicleCV");
+  e_veh_allowed = cv_create("EastVehicleCV");
+  w_veh_allowed = cv_create("WestVehicleCV");
 
-  intersectionSem = sem_create("intersectionSem",1);
-  if (intersectionSem == NULL) {
-    panic("could not create intersection semaphore");
+  if (intersection_lk == NULL) {
+    panic("could not create locks");
   }
+
   return;
 }
 
@@ -54,8 +126,12 @@ void
 intersection_sync_cleanup(void)
 {
   /* replace this default implementation with your own implementation */
-  KASSERT(intersectionSem != NULL);
-  sem_destroy(intersectionSem);
+  KASSERT(intersection_lk != NULL);
+  lock_destroy(intersection_lk);
+  cv_destroy(n_veh_allowed);
+  cv_destroy(s_veh_allowed);
+  cv_destroy(e_veh_allowed);
+  cv_destroy(w_veh_allowed);
 }
 
 
@@ -76,10 +152,49 @@ void
 intersection_before_entry(Direction origin, Direction destination) 
 {
   /* replace this default implementation with your own implementation */
-  (void)origin;  /* avoid compiler complaint about unused parameter */
-  (void)destination; /* avoid compiler complaint about unused parameter */
-  KASSERT(intersectionSem != NULL);
-  P(intersectionSem);
+  lock_acquire(intersection_lk);
+  int ori_num = (int)origin;
+  dir_wait[ori_num]++;
+  while(!trail_allow(origin, destination))
+  {
+    if(ori_num == 0)
+    {
+      cv_wait(n_veh_allowed, intersection_lk);   
+    }
+    else if (ori_num == 1)
+    {
+      cv_wait(e_veh_allowed, intersection_lk);   
+    }
+    else if (ori_num == 2)
+    {
+      cv_wait(s_veh_allowed, intersection_lk);   
+    }
+    else
+    {
+      cv_wait(w_veh_allowed, intersection_lk);
+    }
+  }
+  
+  dir_wait[ori_num]--;
+  dir_por[ori_num] = 0;
+  for (int i = 0; i < 4; i++)
+  {
+      dir_por[i] += dir_wait[i];
+  }
+  
+  if(!t1_taken)
+  {
+    t1_taken = true;
+    t1_ori = origin;
+    t1_des = destination;
+  }
+  else
+  {
+    t2_taken = true;
+    t2_ori = origin;
+    t2_des = destination;
+  }
+  lock_release(intersection_lk);
 }
 
 
@@ -98,8 +213,42 @@ void
 intersection_after_exit(Direction origin, Direction destination) 
 {
   /* replace this default implementation with your own implementation */
-  (void)origin;  /* avoid compiler complaint about unused parameter */
-  (void)destination; /* avoid compiler complaint about unused parameter */
-  KASSERT(intersectionSem != NULL);
-  V(intersectionSem);
+  lock_acquire(intersection_lk);
+  if(t1_taken && t1_ori == origin && t1_des == destination)
+  {
+    t1_taken = false;
+  }
+  else
+  {
+     t2_taken = false;
+  }
+
+  int max = -1;
+  int pos = -1;
+  for(int i = 0; i < 4; i++)
+  {
+    if(dir_por[i] > max && dir_wait[i] > 0)
+    {
+      max = dir_por[i];
+      pos = i;
+    }
+  }
+
+  lock_release(intersection_lk);
+  if (pos == 0)
+  {
+    cv_broadcast(n_veh_allowed, intersection_lk);
+  }
+  else if (pos == 1)
+  {
+    cv_broadcast(e_veh_allowed, intersection_lk);
+  }
+  else if (pos == 2)
+  {
+    cv_broadcast(s_veh_allowed, intersection_lk);
+  }
+  else if (pos == 3)
+  {
+    cv_broadcast(w_veh_allowed, intersection_lk);
+  }  
 }
