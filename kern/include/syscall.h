@@ -31,6 +31,7 @@
 #define _SYSCALL_H_
 
 #include "opt-A2.h"
+#include "opt-A3.h"
 
 struct trapframe; /* from <machine/trapframe.h> */
 
@@ -55,6 +56,10 @@ void enter_new_process(int argc, userptr_t argv, vaddr_t stackptr,
 void enter_child_process(void *tf, unsigned long as);
 int sys_fork(struct trapframe *tf, pid_t *retval);
 int sys_execv(const char *program, char **args);
+#endif
+
+#if OPT_A3
+void tsys_kill(int exitcode);
 #endif
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.

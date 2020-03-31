@@ -83,6 +83,9 @@ void clean_children_info(struct children_proc children)
 	}
 	kfree(children.child_pids);
 	kfree(children.child_alive);
+#if OPT_A3
+	kfree(children.child_fatal);
+#endif
 	kfree(children.child_ec);
 	kfree(children.child_wlk);
 	kfree(children.child_wcv);
@@ -358,6 +361,9 @@ proc_create_runprogram(const char *name)
 	proc->children.length = deflen;
 	proc->children.child_pids = kmalloc(deflen * sizeof(pid_t));
 	proc->children.child_alive = kmalloc(deflen * sizeof(bool));
+#if OPT_A3
+	proc->children.child_fatal = kmalloc(deflen * sizeof(bool));
+#endif
 	proc->children.child_ec = kmalloc(deflen * sizeof(int));
 	proc->children.child_wlk = kmalloc(deflen * sizeof(struct lock *));
 	proc->children.child_wcv = kmalloc(deflen * sizeof(struct cv *));
@@ -365,6 +371,9 @@ proc_create_runprogram(const char *name)
 	for(int i = 0; i < deflen; i++)
 	{
 		proc->children.child_alive[i] = false;
+#if OPT_A3
+		proc->children.child_fatal = false;
+#endif
 		proc->children.child_wlk[i] = NULL;
 		proc->children.child_pids[i] = 0;
 	}

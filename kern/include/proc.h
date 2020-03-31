@@ -41,6 +41,7 @@
 #include <synch.h>
 #include <types.h>
 #include "opt-A2.h"
+#include "opt-A3.h"
 
 struct addrspace;
 struct vnode;
@@ -58,6 +59,9 @@ struct children_proc
 	int length;
 	pid_t *child_pids;
 	bool *child_alive;
+#if OPT_A3
+	bool *child_fatal;
+#endif
 	int *child_ec;
 	struct lock** child_wlk;
 	struct cv** child_wcv;

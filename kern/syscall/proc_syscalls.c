@@ -11,6 +11,7 @@
 #include <addrspace.h>
 #include <copyinout.h>
 #include "opt-A2.h"
+#include "opt-A3.h"
 #include <vfs.h>
 #include <kern/fcntl.h>
 #include <mips/trapframe.h>
@@ -71,6 +72,55 @@ void sys__exit(int exitcode) {
   panic("return from thread_exit in sys_exit\n");
 }
 
+#if OPT_A3
+void tsys_kill(int exitcode)
+{
+  (void) exitcode;
+  struct addrspace *as;
+  struct proc *p = curproc;
+
+
+  if(p -> parent_alive)
+  {
+    struct proc *parent = p->parent;
+    int index = p -> parent_index;
+    parent->children.child_alive[index] = false;
+    parent->children.child_fatal[index] = true;
+    if (parent->children.child_wlk[index] != NULL)
+    {
+      cv_signal(parent->children.child_wcv[index], parent->children.child_wlk[index]);
+    }
+  }
+ 
+  announce_children(p->children);
+  clean_children_info(p->children);
+
+  KASSERT(curproc->p_addrspace != NULL);
+  as_deactivate();
+  /*
+   * clear p_addrspace before calling as_destroy. Otherwise if
+   * as_destroy sleeps (which is quite possible) when we
+   * come back we'll be calling as_activate on a
+   * half-destroyed address space. This tends to be
+   * messily fatal.
+   */
+  as = curproc_setas(NULL);
+  as_destroy(as);
+
+  /* detach this thread from its process */
+  /* note: curproc cannot be used after this call */
+  proc_remthread(curthread);
+
+  /* if this is the last user process in the system, proc_destroy()
+     will wake up the kernel menu thread */
+  proc_destroy(p);
+  
+  thread_exit();
+  /* thread_exit() does not return, so we should never get here */
+  panic("return from thread_exit in sys_exit\n");
+}
+#endif 
+
 
 /* stub handler for getpid() system call                */
 int
@@ -118,7 +168,6 @@ sys_waitpid(pid_t pid,
     *retval = -1;
     return ESRCH;
   }
-
   if (curproc->children.child_alive[index])
   {
     curproc->children.child_wlk[index] = lock_create("child waiting lock");
@@ -130,9 +179,19 @@ sys_waitpid(pid_t pid,
     }
     lock_release(curproc->children.child_wlk[index]);
   }
-
+#if OPT_A3
+  if(curproc->children.child_fatal[index])
+  {
+    exitstatus = _MKWAIT_SIG(0);
+  }
+  else
+  {
+    exitstatus = _MKWAIT_EXIT(curproc->children.child_ec[index]);
+  }
+#else
   // if child is died before, exit code is already set in the array
   exitstatus = _MKWAIT_EXIT(curproc->children.child_ec[index]);
+#endif
 
 #else
     /* for now, just pretend the exitstatus is 0 */
